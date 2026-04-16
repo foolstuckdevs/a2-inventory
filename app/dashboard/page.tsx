@@ -1,39 +1,92 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Package, ArrowLeftRight, AlertTriangle, HandCoins } from "lucide-react";
+import { Package, ArrowLeftRight, AlertTriangle, HandCoins, ShieldAlert, PackageX, PackageMinus, Trash2 } from "lucide-react";
 
-export default async function DashboardPage() {
+function StatsGridSkeleton() {
+  return (
+    <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <Card key={i} className="p-6">
+          <div className="flex items-center justify-between">
+            <div className="h-4 w-24 animate-pulse rounded bg-muted" />
+            <div className="h-8 w-8 animate-pulse rounded-lg bg-muted" />
+          </div>
+          <div className="mt-3 h-8 w-16 animate-pulse rounded bg-muted" />
+          <div className="mt-2 h-3 w-36 animate-pulse rounded bg-muted" />
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function LowStockSkeleton() {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="h-5 w-40 animate-pulse rounded bg-muted" />
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-4 w-full animate-pulse rounded bg-muted" />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+async function DashboardStats() {
   const supabase = await createServerSupabaseClient();
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
 
   const [
     { count: itemCount },
-    { count: transactionCount },
+    { count: todayTransactionCount },
     { data: allItems },
     { data: borrowedTx },
+    { count: returnedCount },
   ] = await Promise.all([
     supabase.from("items").select("*", { count: "exact", head: true }),
-    supabase.from("transactions").select("*", { count: "exact", head: true }),
-    supabase.from("items").select("*, categories(*)"),
     supabase
       .from("transactions")
-      .select("*")
-      .eq("action", "borrowed"),
+      .select("*", { count: "exact", head: true })
+      .gte("created_at", todayStart.toISOString())
+      .lte("created_at", todayEnd.toISOString()),
+    supabase.from("items").select("*, categories(*)"),
+    supabase.from("transactions").select("*").eq("action", "borrowed"),
+    supabase.from("transactions").select("*", { count: "exact", head: true }).eq("action", "returned"),
   ]);
-
-  // Count currently borrowed (borrowed minus returned)
-  const { count: returnedCount } = await supabase
-    .from("transactions")
-    .select("*", { count: "exact", head: true })
-    .eq("action", "returned");
 
   const borrowedCount = (borrowedTx?.length ?? 0) - (returnedCount ?? 0);
 
   const lowStockItems = (allItems ?? []).filter(
     (i: Record<string, number>) => i.quantity <= i.reorder_level
   );
+
+  const damagedCount = (allItems ?? []).filter(
+    (i: Record<string, string>) => i.status === "damaged"
+  ).length;
+
+  const lostCount = (allItems ?? []).filter(
+    (i: Record<string, string>) => i.status === "lost"
+  ).length;
+
+  const outOfStockCount = (allItems ?? []).filter(
+    (i: Record<string, number>) => i.quantity === 0
+  ).length;
+
+  const disposedCount = (allItems ?? []).filter(
+    (i: Record<string, string>) => i.status === "disposed"
+  ).length;
 
   const stats = [
     {
@@ -45,35 +98,58 @@ export default async function DashboardPage() {
     },
     {
       label: "Transactions",
-      value: transactionCount ?? 0,
+      value: todayTransactionCount ?? 0,
       icon: ArrowLeftRight,
-      description: "Total stock movements",
-      href: "/dashboard/transactions",
+      description: "Stock movements today",
+      href: "/dashboard/transactions?date=today",
     },
     {
       label: "Borrowed Items",
       value: Math.max(0, borrowedCount),
       icon: HandCoins,
       description: "Currently borrowed out",
-      href: "/dashboard/transactions",
+      href: "/dashboard/transactions?action=borrowed",
     },
     {
       label: "Low Stock",
       value: lowStockItems.length,
       icon: AlertTriangle,
       description: "Items below reorder level",
-      href: "/dashboard/items",
+      href: "/dashboard/items?status=low_stock",
+    },
+    {
+      label: "Damaged Items",
+      value: damagedCount,
+      icon: ShieldAlert,
+      description: "Items marked as damaged",
+      href: "/dashboard/items?status=damaged",
+    },
+    {
+      label: "Lost Items",
+      value: lostCount,
+      icon: PackageX,
+      description: "Items marked as lost",
+      href: "/dashboard/items?status=lost",
+    },
+    {
+      label: "Out of Stock",
+      value: outOfStockCount,
+      icon: PackageMinus,
+      description: "Items with zero quantity",
+      href: "/dashboard/items?status=out_of_stock",
+    },
+    {
+      label: "Disposed Items",
+      value: disposedCount,
+      icon: Trash2,
+      description: "Items marked as disposed",
+      href: "/dashboard/items?status=disposed",
     },
   ];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">Overview of your inventory system.</p>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <>
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((s) => (
           <Link key={s.label} href={s.href}>
             <Card className="transition-shadow hover:shadow-md cursor-pointer h-full">
@@ -128,6 +204,21 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       )}
+    </>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+        <p className="text-sm text-muted-foreground">Overview of your inventory system.</p>
+      </div>
+
+      <Suspense fallback={<StatsGridSkeleton />}>
+        <DashboardStats />
+      </Suspense>
     </div>
   );
 }

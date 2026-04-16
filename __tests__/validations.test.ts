@@ -131,7 +131,7 @@ describe("createTransactionSchema", () => {
   });
 
   it("accepts all valid action types", () => {
-    for (const action of ["stock_in", "stock_out", "borrowed", "returned"]) {
+    for (const action of ["stock_in", "stock_out", "borrowed", "returned", "damaged", "lost", "disposed"]) {
       const result = createTransactionSchema.safeParse({
         item_id: validUUID,
         action,

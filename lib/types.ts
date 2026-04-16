@@ -42,6 +42,8 @@ export type Database = {
           quantity: number;
           reorder_level: number;
           unit: string;
+          status: "active" | "damaged" | "lost" | "disposed";
+          assigned_to: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -53,6 +55,8 @@ export type Database = {
           quantity?: number;
           reorder_level?: number;
           unit?: string;
+          status?: "active" | "damaged" | "lost" | "disposed";
+          assigned_to?: string | null;
         };
         Update: {
           name?: string;
@@ -61,6 +65,8 @@ export type Database = {
           quantity?: number;
           reorder_level?: number;
           unit?: string;
+          status?: "active" | "damaged" | "lost" | "disposed";
+          assigned_to?: string | null;
         };
       };
       transactions: {
@@ -68,7 +74,7 @@ export type Database = {
           id: string;
           item_id: string;
           user_id: string | null;
-          action: "stock_in" | "stock_out" | "borrowed" | "returned";
+          action: "stock_in" | "stock_out" | "borrowed" | "returned" | "damaged" | "lost" | "disposed" | "stock_return";
           quantity: number;
           remarks: string | null;
           created_at: string;
@@ -77,13 +83,13 @@ export type Database = {
           id?: string;
           item_id: string;
           user_id?: string | null;
-          action: "stock_in" | "stock_out" | "borrowed" | "returned";
+          action: "stock_in" | "stock_out" | "borrowed" | "returned" | "damaged" | "lost" | "disposed" | "stock_return";
           quantity?: number;
           remarks?: string | null;
         };
         Update: {
           item_id?: string;
-          action?: "stock_in" | "stock_out" | "borrowed" | "returned";
+          action?: "stock_in" | "stock_out" | "borrowed" | "returned" | "damaged" | "lost" | "disposed" | "stock_return";
           quantity?: number;
           remarks?: string | null;
         };
@@ -97,7 +103,7 @@ export type Category = Database["public"]["Tables"]["categories"]["Row"];
 export type Item = Database["public"]["Tables"]["items"]["Row"];
 export type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
 
-export type ItemWithCategory = Item & { categories: Category | null };
+export type ItemWithCategory = Item & { categories: Category | null; profiles: Profile | null };
 export type TransactionWithDetails = Transaction & {
   items: Item | null;
   profiles: Profile | null;

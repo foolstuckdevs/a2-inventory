@@ -1,12 +1,14 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
 import { ArrowUpDown, Plus, Eye } from "lucide-react";
 import { createTransaction } from "@/lib/actions/transactions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +27,21 @@ const actionLabels: Record<string, string> = {
   stock_out: "Stock Out",
   borrowed: "Borrowed",
   returned: "Returned",
+  damaged: "Damaged",
+  lost: "Lost",
+  disposed: "Disposed",
+  stock_return: "Stock Return",
+};
+
+const actionDescriptions: Record<string, string> = {
+  stock_in: "New inventory added or quantities replenished",
+  stock_out: "Item removed from inventory for immediate use",
+  borrowed: "Item checked out for temporary use",
+  returned: "Item successfully returned to the inventory",
+  damaged: "Reported as broken, defective, or unusable",
+  lost: "Reported as missing or cannot be located",
+  disposed: "Permanently removed from stock (expired or scrapped)",
+  stock_return: "Unused items added back into available stock",
 };
 
 const actionColors: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -32,6 +49,10 @@ const actionColors: Record<string, "default" | "secondary" | "destructive" | "ou
   stock_out: "destructive",
   borrowed: "secondary",
   returned: "outline",
+  damaged: "secondary",
+  lost: "destructive",
+  disposed: "outline",
+  stock_return: "default",
 };
 
 export function TransactionsClient({
@@ -41,21 +62,41 @@ export function TransactionsClient({
   transactions: TransactionWithDetails[];
   items: Item[];
 }) {
+  const searchParams = useSearchParams();
   const [showForm, setShowForm] = useState(false);
   const [viewTx, setViewTx] = useState<TransactionWithDetails | null>(null);
-  const [actionFilter, setActionFilter] = useState<string>("all");
+  const [actionFilter, setActionFilter] = useState<string>(searchParams.get("action") ?? "all");
   const [userFilter, setUserFilter] = useState<string>("all");
+  const [selectedItemId, setSelectedItemId] = useState<string>("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  // Date range filter
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [dateFrom, setDateFrom] = useState<string>(searchParams.get("date") === "today" ? todayStr : "");
+  const [dateTo, setDateTo] = useState<string>(searchParams.get("date") === "today" ? todayStr : "");
+
+  const selectedItem = items.find((i) => i.id === selectedItemId);
+  const consumableOnly = ["stock_in", "stock_out", "stock_return", "disposed"];
+  const nonConsumableOnly = ["stock_in", "borrowed", "returned", "damaged", "lost", "disposed"];
+  const allActions = Object.keys(actionLabels);
+  const availableActions = selectedItem
+    ? selectedItem.type === "consumable"
+      ? allActions.filter((a) => consumableOnly.includes(a))
+      : allActions.filter((a) => nonConsumableOnly.includes(a))
+    : allActions;
 
   const uniqueUsers = Array.from(
     new Map(transactions.filter((t) => t.profiles?.full_name).map((t) => [t.profiles!.full_name, t.user_id])).entries()
   );
 
-  const hasFilters = actionFilter !== "all" || userFilter !== "all";
+  const hasFilters = actionFilter !== "all" || userFilter !== "all" || dateFrom !== "" || dateTo !== "";
 
   const filteredData = transactions.filter((t) => {
     if (actionFilter !== "all" && t.action !== actionFilter) return false;
     if (userFilter !== "all" && t.user_id !== userFilter) return false;
+    if (dateFrom && new Date(t.created_at) < new Date(dateFrom)) return false;
+    if (dateTo && new Date(t.created_at) > new Date(dateTo + "T23:59:59")) return false;
     return true;
   });
 
@@ -112,10 +153,10 @@ export function TransactionsClient({
       ),
     },
     {
-      id: "view",
+      id: "actions",
       header: "Actions",
       cell: ({ row }) => (
-        <div className="flex justify-end">
+        <div className="flex items-center gap-1">
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setViewTx(row.original)}>
             <Eye className="h-3.5 w-3.5" />
             <span className="sr-only">View details</span>
@@ -166,8 +207,29 @@ export function TransactionsClient({
                 <option key={id} value={id!}>{name}</option>
               ))}
             </NativeSelect>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">From</span>
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => { setDateFrom(e.target.value); if (dateTo && e.target.value > dateTo) setDateTo(e.target.value); }}
+                max={todayStr}
+                className="h-9 w-36"
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">To</span>
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                min={dateFrom || undefined}
+                max={todayStr}
+                className="h-9 w-36"
+              />
+            </div>
             {hasFilters && (
-              <Button variant="ghost" size="sm" className="h-9" onClick={() => { setActionFilter("all"); setUserFilter("all"); }}>
+              <Button variant="ghost" size="sm" className="h-9" onClick={() => { setActionFilter("all"); setUserFilter("all"); setDateFrom(""); setDateTo(""); }}>
                 Clear filters
               </Button>
             )}
@@ -181,7 +243,7 @@ export function TransactionsClient({
       />
 
       {/* New Transaction Dialog */}
-      <Dialog open={showForm} onOpenChange={setShowForm}>
+      <Dialog open={showForm} onOpenChange={(open) => { setShowForm(open); if (!open) setSelectedItemId(""); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>New Transaction</DialogTitle>
@@ -189,33 +251,47 @@ export function TransactionsClient({
           </DialogHeader>
           <form
             action={async (fd) => {
+              if (submitting) return;
+              setSubmitting(true);
               setError("");
               try {
                 await createTransaction(fd);
                 setShowForm(false);
+                setSelectedItemId("");
               } catch (err) {
                 setError(err instanceof Error ? err.message : "Failed to record transaction.");
+              } finally {
+                setSubmitting(false);
               }
             }}
             className="space-y-4"
           >
             <div className="space-y-2">
               <Label>Item <span className="text-destructive">*</span></Label>
-              <NativeSelect name="item_id" required>
-                <option value="">Select item</option>
-                {items.map((i) => (
-                  <option key={i.id} value={i.id}>{i.name} (Qty: {i.quantity})</option>
-                ))}
-              </NativeSelect>
+              <SearchableSelect
+                name="item_id"
+                required
+                placeholder="Search items..."
+                options={items.map((i) => ({ value: i.id, label: `${i.name} (Qty: ${i.quantity})` }))}
+                onValueChange={(value) => setSelectedItemId(value)}
+              />
             </div>
             <div className="space-y-2">
               <Label>Action <span className="text-destructive">*</span></Label>
-              <NativeSelect name="action" required>
-                <option value="stock_in">Stock In</option>
-                <option value="stock_out">Stock Out</option>
-                <option value="borrowed">Borrowed</option>
-                <option value="returned">Returned</option>
-              </NativeSelect>
+              <div className="grid gap-1.5 max-h-48 overflow-y-auto rounded-md border p-1">
+                {availableActions.map((key) => (
+                  <label
+                    key={key}
+                    className="flex items-start gap-2 rounded-md px-3 py-2 cursor-pointer hover:bg-muted has-checked:bg-muted has-checked:ring-1 has-checked:ring-ring transition-colors"
+                  >
+                    <input type="radio" name="action" value={key} required className="mt-0.5 accent-current" />
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium leading-tight">{actionLabels[key]}</div>
+                      <div className="text-xs text-muted-foreground leading-tight">{actionDescriptions[key]}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Quantity <span className="text-destructive">*</span></Label>
@@ -227,7 +303,7 @@ export function TransactionsClient({
             </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
-              <Button type="submit">Record Transaction</Button>
+              <Button type="submit" disabled={submitting}>{submitting ? "Recording..." : "Record Transaction"}</Button>
             </div>
           </form>
         </DialogContent>
@@ -235,42 +311,39 @@ export function TransactionsClient({
 
       {/* View Transaction Details Dialog */}
       <Dialog open={!!viewTx} onOpenChange={(open) => { if (!open) setViewTx(null); }}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Transaction Details</DialogTitle>
-            <DialogDescription>Full record of this stock movement.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2">
+              {viewTx?.items?.name ?? "Transaction"}
+              {viewTx && <Badge variant={actionColors[viewTx.action]}>{actionLabels[viewTx.action]}</Badge>}
+            </DialogTitle>
+            <DialogDescription>Transaction details</DialogDescription>
           </DialogHeader>
           {viewTx && (
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="space-y-4 text-sm">
               <div>
-                <span className="text-muted-foreground text-xs">Date & Time</span>
-                <p className="font-medium">{new Date(viewTx.created_at).toLocaleString()}</p>
+                <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">General</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><span className="text-muted-foreground text-xs">Date & Time</span><p className="font-medium">{new Date(viewTx.created_at).toLocaleString()}</p></div>
+                  <div><span className="text-muted-foreground text-xs">Quantity</span><p className="font-medium">{viewTx.quantity}</p></div>
+                </div>
               </div>
+              <hr className="border-border" />
               <div>
-                <span className="text-muted-foreground text-xs">Item</span>
-                <p className="font-medium">{viewTx.items?.name ?? "\u2014"}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground text-xs">Action</span>
-                <p><Badge variant={actionColors[viewTx.action]}>{actionLabels[viewTx.action]}</Badge></p>
-              </div>
-              <div>
-                <span className="text-muted-foreground text-xs">Quantity</span>
-                <p className="font-medium">{viewTx.quantity}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground text-xs">Performed By</span>
-                <p className="font-medium">{viewTx.profiles?.full_name ?? "\u2014"}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground text-xs">Transaction ID</span>
-                <p className="font-mono text-xs text-muted-foreground">{viewTx.id}</p>
+                <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">Details</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><span className="text-muted-foreground text-xs">Performed By</span><p className="font-medium">{viewTx.profiles?.full_name ?? "\u2014"}</p></div>
+                  <div><span className="text-muted-foreground text-xs">Item</span><p className="font-medium">{viewTx.items?.name ?? "\u2014"}</p></div>
+                </div>
               </div>
               {viewTx.remarks && (
-                <div className="col-span-2">
-                  <span className="text-muted-foreground text-xs">Remarks</span>
-                  <p className="font-medium">{viewTx.remarks}</p>
-                </div>
+                <>
+                  <hr className="border-border" />
+                  <div>
+                    <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">Remarks</h4>
+                    <p className="font-medium">{viewTx.remarks}</p>
+                  </div>
+                </>
               )}
             </div>
           )}

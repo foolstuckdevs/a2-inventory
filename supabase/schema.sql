@@ -32,6 +32,8 @@ CREATE TABLE items (
   quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
   reorder_level INTEGER NOT NULL DEFAULT 5,
   unit VARCHAR(50) NOT NULL DEFAULT 'pcs',
+  status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'damaged', 'lost', 'disposed')),
+  assigned_to UUID REFERENCES profiles(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -41,7 +43,7 @@ CREATE TABLE transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   item_id UUID NOT NULL REFERENCES items(id) ON DELETE CASCADE,
   user_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
-  action VARCHAR(20) NOT NULL CHECK (action IN ('stock_in', 'stock_out', 'borrowed', 'returned')),
+  action VARCHAR(20) NOT NULL CHECK (action IN ('stock_in', 'stock_out', 'borrowed', 'returned', 'damaged', 'lost', 'disposed', 'stock_return')),
   quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
   remarks TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -51,6 +53,8 @@ CREATE TABLE transactions (
 -- INDEXES
 -- ============================================
 CREATE INDEX idx_items_category ON items(category_id);
+CREATE INDEX idx_items_assigned_to ON items(assigned_to);
+CREATE INDEX idx_items_status ON items(status);
 CREATE INDEX idx_transactions_item ON transactions(item_id);
 CREATE INDEX idx_transactions_user ON transactions(user_id);
 CREATE INDEX idx_transactions_created ON transactions(created_at DESC);
@@ -137,6 +141,7 @@ RETURNS UUID AS $$
 DECLARE
   v_transaction_id UUID;
   v_current_qty INTEGER;
+  v_new_qty INTEGER;
 BEGIN
   -- Lock the item row to prevent concurrent modifications
   SELECT quantity INTO v_current_qty
@@ -149,7 +154,7 @@ BEGIN
   END IF;
 
   -- Validate sufficient stock for outgoing actions
-  IF p_action IN ('stock_out', 'borrowed') AND v_current_qty < p_quantity THEN
+  IF p_action IN ('stock_out', 'borrowed', 'damaged', 'lost', 'disposed') AND v_current_qty < p_quantity THEN
     RAISE EXCEPTION 'Insufficient stock. Available: %, Requested: %', v_current_qty, p_quantity;
   END IF;
 
@@ -159,10 +164,28 @@ BEGIN
   RETURNING id INTO v_transaction_id;
 
   -- Update item quantity based on action
-  IF p_action IN ('stock_in', 'returned') THEN
+  IF p_action IN ('stock_in', 'returned', 'stock_return') THEN
     UPDATE items SET quantity = quantity + p_quantity WHERE id = p_item_id;
-  ELSIF p_action IN ('stock_out', 'borrowed') THEN
+  ELSIF p_action IN ('stock_out', 'borrowed', 'damaged', 'lost', 'disposed') THEN
     UPDATE items SET quantity = quantity - p_quantity WHERE id = p_item_id;
+  END IF;
+
+  -- Auto-set item status when quantity reaches 0 for damage/loss/disposal
+  SELECT quantity INTO v_new_qty FROM items WHERE id = p_item_id;
+  IF p_action IN ('damaged', 'lost', 'disposed') AND v_new_qty = 0 THEN
+    UPDATE items SET status = p_action WHERE id = p_item_id;
+  END IF;
+
+  -- Reset status to active when restocking a damaged/lost item
+  IF p_action = 'stock_in' THEN
+    UPDATE items SET status = 'active' WHERE id = p_item_id AND status IN ('damaged', 'lost');
+  END IF;
+
+  -- Auto-set assigned_to on borrow/return (non-consumable only)
+  IF p_action = 'borrowed' AND EXISTS (SELECT 1 FROM items WHERE id = p_item_id AND type = 'non_consumable') THEN
+    UPDATE items SET assigned_to = p_user_id WHERE id = p_item_id;
+  ELSIF p_action = 'returned' THEN
+    UPDATE items SET assigned_to = NULL WHERE id = p_item_id;
   END IF;
 
   RETURN v_transaction_id;

@@ -9,6 +9,8 @@ export const createItemSchema = z.object({
   quantity: z.number().int().min(0, "Quantity cannot be negative"),
   reorder_level: z.number().int().min(0, "Reorder level cannot be negative"),
   unit: z.string().min(1, "Unit is required").max(50, "Unit too long"),
+  status: z.enum(["active", "damaged", "lost", "disposed"]).default("active"),
+  assigned_to: z.string().uuid("Invalid user").nullable().default(null),
 });
 
 export const updateItemSchema = createItemSchema;
@@ -19,7 +21,7 @@ export const createCategorySchema = z.object({
 
 export const createTransactionSchema = z.object({
   item_id: z.string().uuid("Please select a valid item"),
-  action: z.enum(["stock_in", "stock_out", "borrowed", "returned"], {
+  action: z.enum(["stock_in", "stock_out", "borrowed", "returned", "damaged", "lost", "disposed", "stock_return"], {
     message: "Invalid action type",
   }),
   quantity: z.number().int().min(1, "Quantity must be at least 1"),

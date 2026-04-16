@@ -8,7 +8,7 @@ export async function getItems() {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("items")
-    .select("*, categories(*)")
+    .select("*, categories(*), profiles:assigned_to(id, full_name)")
     .order("name");
   if (error) throw new Error(error.message);
   return data;
@@ -18,7 +18,7 @@ export async function getItem(id: string) {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("items")
-    .select("*, categories(*)")
+    .select("*, categories(*), profiles:assigned_to(id, full_name)")
     .eq("id", id)
     .single();
   if (error) throw new Error(error.message);
@@ -36,6 +36,16 @@ export async function getLowStockItems() {
   return (all ?? []).filter((i) => i.quantity <= i.reorder_level);
 }
 
+export async function getProfiles() {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, full_name")
+    .order("full_name");
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function createItem(formData: FormData) {
   const parsed = createItemSchema.safeParse({
     name: formData.get("name"),
@@ -44,6 +54,8 @@ export async function createItem(formData: FormData) {
     quantity: Number(formData.get("quantity") || 0),
     reorder_level: Number(formData.get("reorder_level") || 5),
     unit: (formData.get("unit") as string) || "pcs",
+    status: (formData.get("status") as string) || "active",
+    assigned_to: (formData.get("assigned_to") as string) || null,
   });
 
   if (!parsed.success) {
@@ -64,6 +76,8 @@ export async function updateItem(id: string, formData: FormData) {
     quantity: Number(formData.get("quantity") || 0),
     reorder_level: Number(formData.get("reorder_level") || 5),
     unit: (formData.get("unit") as string) || "pcs",
+    status: (formData.get("status") as string) || "active",
+    assigned_to: (formData.get("assigned_to") as string) || null,
   });
 
   if (!parsed.success) {

@@ -1,12 +1,14 @@
 ﻿"use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
 import { ArrowUpDown, Pencil, Trash2, Plus, Eye } from "lucide-react";
 import { createItem, updateItem, deleteItem } from "@/lib/actions/items";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/ui/data-table";
@@ -19,25 +21,54 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 
-import type { Category, ItemWithCategory } from "@/lib/types";
+import type { Category, ItemWithCategory, Profile } from "@/lib/types";
+
+const statusColors: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  active: "default",
+  damaged: "secondary",
+  lost: "destructive",
+  disposed: "outline",
+};
+
+const statusLabels: Record<string, string> = {
+  active: "Active",
+  damaged: "Damaged",
+  lost: "Lost",
+  disposed: "Disposed",
+};
 
 export function ItemsClient({
   items,
   categories,
+  profiles,
 }: {
   items: ItemWithCategory[];
   categories: Category[];
+  profiles: Pick<Profile, "id" | "full_name">[];
 }) {
+  const searchParams = useSearchParams();
   const [formOpen, setFormOpen] = useState(false);
   const [editItem, setEditItem] = useState<ItemWithCategory | null>(null);
   const [viewItem, setViewItem] = useState<ItemWithCategory | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>(searchParams.get("status") ?? "all");
+  const [formType, setFormType] = useState<string>("consumable");
   const [error, setError] = useState("");
 
-  const filteredItems = categoryFilter === "all"
-    ? items
-    : items.filter((item) => item.category_id === categoryFilter);
+  const filteredItems = items.filter((item) => {
+    if (categoryFilter !== "all" && item.category_id !== categoryFilter) return false;
+    if (statusFilter === "low_stock") {
+      return item.quantity <= item.reorder_level;
+    }
+    if (statusFilter === "out_of_stock") {
+      return item.quantity === 0;
+    }
+    if (statusFilter !== "all" && item.status !== statusFilter) return false;
+    return true;
+  });
+
+  const hasFilters = categoryFilter !== "all" || statusFilter !== "all";
 
   const columns: ColumnDef<ItemWithCategory>[] = [
     {
@@ -85,6 +116,20 @@ export function ItemsClient({
       header: "Unit",
     },
     {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => {
+        const status = (row.getValue("status") as string) || "active";
+        return <Badge variant={statusColors[status]}>{statusLabels[status]}</Badge>;
+      },
+    },
+    {
+      id: "assigned_to",
+      accessorFn: (row) => row.profiles?.full_name ?? "",
+      header: "Assigned To",
+      cell: ({ row }) => row.original.profiles?.full_name ?? "\u2014",
+    },
+    {
       id: "actions",
       header: "Actions",
       cell: ({ row }) => {
@@ -95,7 +140,7 @@ export function ItemsClient({
               <Eye className="h-3.5 w-3.5" />
               <span className="sr-only">View</span>
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditItem(item); setFormOpen(true); }}>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditItem(item); setFormType(item.type); setFormOpen(true); }}>
               <Pencil className="h-3.5 w-3.5" />
               <span className="sr-only">Edit</span>
             </Button>
@@ -140,9 +185,21 @@ export function ItemsClient({
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </NativeSelect>
-            {categoryFilter !== "all" && (
-              <Button variant="ghost" size="sm" className="h-9" onClick={() => setCategoryFilter("all")}>
-                Clear filter
+            <NativeSelect
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-9 w-30"
+            >
+              <option value="all">All Status</option>
+              <option value="low_stock">Low Stock</option>
+              <option value="out_of_stock">Out of Stock</option>
+              {Object.entries(statusLabels).map(([key, label]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </NativeSelect>
+            {hasFilters && (
+              <Button variant="ghost" size="sm" className="h-9" onClick={() => { setCategoryFilter("all"); setStatusFilter("all"); }}>
+                Clear filters
               </Button>
             )}
           </>
@@ -155,7 +212,7 @@ export function ItemsClient({
       />
 
       {/* Create / Edit Dialog */}
-      <Dialog open={formOpen} onOpenChange={(open) => { setFormOpen(open); if (!open) setEditItem(null); }}>
+      <Dialog open={formOpen} onOpenChange={(open) => { setFormOpen(open); if (!open) { setEditItem(null); } else { setFormType(editItem?.type ?? "consumable"); } }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editItem ? "Edit Item" : "Add Item"}</DialogTitle>
@@ -184,16 +241,16 @@ export function ItemsClient({
             </div>
             <div className="space-y-2">
               <Label>Category</Label>
-              <NativeSelect name="category_id" defaultValue={editItem?.category_id ?? ""}>
-                <option value="">None</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </NativeSelect>
+              <SearchableSelect
+                name="category_id"
+                placeholder="Search categories..."
+                defaultValue={editItem?.category_id ?? ""}
+                options={[{ value: "", label: "None" }, ...categories.map((c) => ({ value: c.id, label: c.name }))]}
+              />
             </div>
             <div className="space-y-2">
               <Label>Type <span className="text-destructive">*</span></Label>
-              <NativeSelect name="type" defaultValue={editItem?.type ?? "consumable"}>
+              <NativeSelect name="type" defaultValue={editItem?.type ?? "consumable"} onChange={(e) => setFormType(e.target.value)}>
                 <option value="consumable">Consumable</option>
                 <option value="non_consumable">Non-Consumable</option>
               </NativeSelect>
@@ -210,6 +267,26 @@ export function ItemsClient({
               <Label>Unit</Label>
               <Input name="unit" defaultValue={editItem?.unit ?? "pcs"} placeholder="e.g. pcs, kg, boxes" />
             </div>
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <NativeSelect name="status" defaultValue={editItem?.status ?? "active"}>
+                <option value="active">Active</option>
+                <option value="damaged">Damaged</option>
+                <option value="lost">Lost</option>
+                <option value="disposed">Disposed</option>
+              </NativeSelect>
+            </div>
+            {formType === "non_consumable" && (
+              <div className="space-y-2">
+                <Label>Assigned To</Label>
+                <SearchableSelect
+                  name="assigned_to"
+                  placeholder="Search employees..."
+                  defaultValue={editItem?.assigned_to ?? ""}
+                  options={[{ value: "", label: "Unassigned" }, ...profiles.map((p) => ({ value: p.id, label: p.full_name }))]}
+                />
+              </div>
+            )}
             <div className="flex gap-2 sm:col-span-2 justify-end">
               <Button type="button" variant="outline" onClick={() => { setFormOpen(false); setEditItem(null); }}>Cancel</Button>
               <Button type="submit">Save</Button>
@@ -220,19 +297,62 @@ export function ItemsClient({
 
       {/* View Details Dialog */}
       <Dialog open={!!viewItem} onOpenChange={(open) => { if (!open) setViewItem(null); }}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{viewItem?.name}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              {viewItem?.name}
+              {viewItem && (
+                <Badge variant="outline" className="font-normal capitalize">
+                  {viewItem.type.replace("_", " ")}
+                </Badge>
+              )}
+            </DialogTitle>
             <DialogDescription>Item details</DialogDescription>
           </DialogHeader>
           {viewItem && (
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div><span className="text-muted-foreground">Category</span><p className="font-medium">{viewItem.categories?.name ?? "\u2014"}</p></div>
-              <div><span className="text-muted-foreground">Type</span><p className="font-medium capitalize">{viewItem.type.replace("_", " ")}</p></div>
-              <div><span className="text-muted-foreground">Quantity</span><p className="font-medium">{viewItem.quantity} {viewItem.unit}</p></div>
-              <div><span className="text-muted-foreground">Reorder Level</span><p className="font-medium">{viewItem.reorder_level}</p></div>
-              <div><span className="text-muted-foreground">Created</span><p className="font-medium">{new Date(viewItem.created_at).toLocaleDateString()}</p></div>
-              <div><span className="text-muted-foreground">Updated</span><p className="font-medium">{new Date(viewItem.updated_at).toLocaleDateString()}</p></div>
+            <div className="space-y-4 text-sm">
+              {/* General */}
+              <div>
+                <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">General</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><span className="text-muted-foreground text-xs">Category</span><p className="font-medium">{viewItem.categories?.name ?? "\u2014"}</p></div>
+                  <div>
+                    <span className="text-muted-foreground text-xs">Status</span>
+                    <p><Badge variant={statusColors[viewItem.status || "active"]}>{statusLabels[viewItem.status || "active"]}</Badge></p>
+                  </div>
+                </div>
+              </div>
+              <hr className="border-border" />
+              {/* Stock */}
+              <div>
+                <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">Stock</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <span className="text-muted-foreground text-xs">Quantity</span>
+                    <p className="font-medium">{viewItem.quantity} {viewItem.unit}</p>
+                    {viewItem.quantity <= viewItem.reorder_level && (
+                      <span className="text-xs font-semibold text-destructive">⚠ Low Stock</span>
+                    )}
+                  </div>
+                  <div><span className="text-muted-foreground text-xs">Reorder Level</span><p className="font-medium">{viewItem.reorder_level}</p></div>
+                </div>
+              </div>
+              {viewItem.type === "non_consumable" && (
+                <>
+                  <hr className="border-border" />
+                  {/* Assignment */}
+                  <div>
+                    <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">Assignment</h4>
+                    <div><span className="text-muted-foreground text-xs">Assigned To</span><p className="font-medium">{viewItem.profiles?.full_name ?? "\u2014"}</p></div>
+                  </div>
+                </>
+              )}
+              <hr className="border-border" />
+              {/* Dates */}
+              <div className="grid grid-cols-2 gap-3">
+                <div><span className="text-muted-foreground text-xs">Created</span><p className="font-medium">{new Date(viewItem.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</p></div>
+                <div><span className="text-muted-foreground text-xs">Updated</span><p className="font-medium">{new Date(viewItem.updated_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</p></div>
+              </div>
             </div>
           )}
         </DialogContent>
