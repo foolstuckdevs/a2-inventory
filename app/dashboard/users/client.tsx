@@ -19,13 +19,13 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import type { Profile } from "@/lib/types";
+import type { UserListItem } from "@/lib/types";
 
 export function UsersClient({
   profiles,
   currentUserId,
 }: {
-  profiles: Profile[];
+  profiles: UserListItem[];
   currentUserId: string;
 }) {
   const router = useRouter();
@@ -33,7 +33,7 @@ export function UsersClient({
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  const columns: ColumnDef<Profile>[] = [
+  const columns: ColumnDef<UserListItem>[] = [
     {
       accessorKey: "full_name",
       header: ({ column }) => (
@@ -66,19 +66,6 @@ export function UsersClient({
           </Badge>
         );
       },
-    },
-    {
-      accessorKey: "created_at",
-      header: ({ column }) => (
-        <Button variant="ghost" size="sm" className="-ml-3" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-          Joined <ArrowUpDown className="ml-2 h-3.5 w-3.5" />
-        </Button>
-      ),
-      cell: ({ row }) => (
-        <span className="text-muted-foreground text-sm">
-          {new Date(row.getValue("created_at")).toLocaleDateString()}
-        </span>
-      ),
     },
     {
       id: "actions",

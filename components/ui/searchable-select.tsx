@@ -14,6 +14,7 @@ interface SearchableSelectProps {
   options: SearchableSelectOption[];
   placeholder?: string;
   defaultValue?: string;
+  value?: string;
   required?: boolean;
   className?: string;
   onValueChange?: (value: string) => void;
@@ -24,15 +25,31 @@ export function SearchableSelect({
   options,
   placeholder = "Search...",
   defaultValue = "",
+  value,
   required,
   className,
   onValueChange,
 }: SearchableSelectProps) {
+  const isControlled = value !== undefined;
   const defaultOption = options.find((o) => o.value === defaultValue);
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState(defaultOption?.label ?? "");
-  const [selectedValue, setSelectedValue] = React.useState(defaultValue);
+  const [selectedValueState, setSelectedValueState] = React.useState(defaultValue);
   const containerRef = React.useRef<HTMLDivElement>(null);
+
+  const selectedValue = isControlled ? value : selectedValueState;
+
+  React.useEffect(() => {
+    if (isControlled) {
+      const match = options.find((option) => option.value === value);
+      setSearch(match?.label ?? "");
+      return;
+    }
+
+    const match = options.find((option) => option.value === defaultValue);
+    setSelectedValueState(defaultValue);
+    setSearch(match?.label ?? "");
+  }, [defaultValue, isControlled, options, value]);
 
   const filtered = search
     ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()))
@@ -68,7 +85,10 @@ export function SearchableSelect({
           required={required && !selectedValue}
           onChange={(e) => {
             setSearch(e.target.value);
-            setSelectedValue("");
+            if (!isControlled) {
+              setSelectedValueState("");
+            }
+            onValueChange?.("");
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
@@ -86,7 +106,9 @@ export function SearchableSelect({
               )}
               onMouseDown={(e) => {
                 e.preventDefault();
-                setSelectedValue(o.value);
+                if (!isControlled) {
+                  setSelectedValueState(o.value);
+                }
                 setSearch(o.label);
                 setOpen(false);
                 onValueChange?.(o.value);

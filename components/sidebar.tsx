@@ -12,7 +12,6 @@ import {
   Users,
   PanelLeftClose,
   PanelLeft,
-  Menu,
   X,
 } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -26,20 +25,13 @@ const navItems = [
 ];
 
 export function Sidebar({
-  userName,
   userRole,
 }: {
-  userName: string;
   userRole: string;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  // Close mobile menu on navigation
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
 
   // Listen for toggle event from header hamburger
   useEffect(() => {
@@ -88,6 +80,7 @@ export function Sidebar({
             <Link
               key={item.href}
               href={item.href}
+              onClick={() => setMobileOpen(false)}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 isActive

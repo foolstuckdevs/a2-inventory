@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
 import { ArrowUpDown, Plus, Eye } from "lucide-react";
@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/ui/data-table";
+import { formatShortDateTime } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -110,7 +111,7 @@ export function TransactionsClient({
       ),
       cell: ({ row }) => (
         <span className="text-muted-foreground text-xs tabular-nums">
-          {new Date(row.getValue("created_at")).toLocaleString()}
+          {formatShortDateTime(row.getValue("created_at") as string)}
         </span>
       ),
     },
@@ -142,6 +143,7 @@ export function TransactionsClient({
       accessorFn: (row) => row.profiles?.full_name ?? "",
       header: "User",
       cell: ({ row }) => row.original.profiles?.full_name ?? "\u2014",
+      meta: { mobileHidden: true, mobileLabel: "User" },
     },
     {
       accessorKey: "remarks",
@@ -151,6 +153,7 @@ export function TransactionsClient({
           {(row.getValue("remarks") as string) || "\u2014"}
         </span>
       ),
+      meta: { mobileHidden: true, mobileLabel: "Remarks" },
     },
     {
       id: "actions",
@@ -163,6 +166,7 @@ export function TransactionsClient({
           </Button>
         </div>
       ),
+      meta: { mobileHidden: true, mobileLabel: "Actions" },
     },
   ];
 
@@ -184,7 +188,7 @@ export function TransactionsClient({
         columns={columns}
         data={filteredData}
         searchKey="item"
-        searchPlaceholder="Search by item or user..."
+        searchPlaceholder="Search items..."
         filterComponent={
           <>
             <NativeSelect
@@ -324,7 +328,7 @@ export function TransactionsClient({
               <div>
                 <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">General</h4>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><span className="text-muted-foreground text-xs">Date & Time</span><p className="font-medium">{new Date(viewTx.created_at).toLocaleString()}</p></div>
+                  <div><span className="text-muted-foreground text-xs">Date & Time</span><p className="font-medium">{formatShortDateTime(viewTx.created_at)}</p></div>
                   <div><span className="text-muted-foreground text-xs">Quantity</span><p className="font-medium">{viewTx.quantity}</p></div>
                 </div>
               </div>

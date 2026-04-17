@@ -49,6 +49,27 @@ CREATE TABLE transactions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Notifications
+CREATE TABLE notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  item_id UUID REFERENCES items(id) ON DELETE SET NULL,
+  title VARCHAR(150) NOT NULL,
+  message TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  read_at TIMESTAMPTZ
+);
+
+-- Audit log for hard-deleted items
+CREATE TABLE item_deletion_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  item_id UUID NOT NULL,
+  item_name VARCHAR(150) NOT NULL,
+  deleted_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  reason TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ============================================
 -- INDEXES
 -- ============================================
@@ -58,6 +79,9 @@ CREATE INDEX idx_items_status ON items(status);
 CREATE INDEX idx_transactions_item ON transactions(item_id);
 CREATE INDEX idx_transactions_user ON transactions(user_id);
 CREATE INDEX idx_transactions_created ON transactions(created_at DESC);
+CREATE INDEX idx_notifications_user_created ON notifications(user_id, created_at DESC);
+CREATE INDEX idx_notifications_unread ON notifications(user_id, read_at);
+CREATE INDEX idx_item_deletion_logs_created ON item_deletion_logs(created_at DESC);
 
 -- ============================================
 -- AUTO-UPDATE updated_at TRIGGER
@@ -200,6 +224,8 @@ ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE item_deletion_logs ENABLE ROW LEVEL SECURITY;
 
 -- Profiles: users can view/update own profile
 CREATE POLICY "Users can view own profile"
@@ -234,10 +260,36 @@ CREATE POLICY "Admins can delete profiles"
 CREATE POLICY "Authenticated users can manage categories"
   ON categories FOR ALL USING (auth.uid() IS NOT NULL);
 
--- Items: any authenticated user
-CREATE POLICY "Authenticated users can manage items"
-  ON items FOR ALL USING (auth.uid() IS NOT NULL);
+-- Items: authenticated users can view and create, admins can update/delete
+CREATE POLICY "Authenticated users can view items"
+  ON items FOR SELECT USING (auth.uid() IS NOT NULL);
+
+CREATE POLICY "Authenticated users can create items"
+  ON items FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+
+CREATE POLICY "Admins can update items"
+  ON items FOR UPDATE USING (is_admin());
+
+CREATE POLICY "Admins can delete items"
+  ON items FOR DELETE USING (is_admin());
 
 -- Transactions: any authenticated user
 CREATE POLICY "Authenticated users can manage transactions"
   ON transactions FOR ALL USING (auth.uid() IS NOT NULL);
+
+-- Notifications: users can only see and update their own notifications
+CREATE POLICY "Users can view own notifications"
+  ON notifications FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Authenticated users can insert notifications"
+  ON notifications FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+
+CREATE POLICY "Users can update own notifications"
+  ON notifications FOR UPDATE USING (auth.uid() = user_id);
+
+-- Item deletion logs: admins can view, admins can insert during deletion workflow
+CREATE POLICY "Admins can view item deletion logs"
+  ON item_deletion_logs FOR SELECT USING (is_admin());
+
+CREATE POLICY "Authenticated users can insert item deletion logs"
+  ON item_deletion_logs FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { Fragment } from "react";
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -16,6 +17,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+type DataTableColumnMeta = {
+  headerClassName?: string;
+  cellClassName?: string;
+  mobileHidden?: boolean;
+  mobileLabel?: string;
+};
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -36,6 +45,7 @@ export function DataTable<TData, TValue>({
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
+  const [expandedRowId, setExpandedRowId] = React.useState<string | null>(null);
 
   const table = useReactTable({
     data,
@@ -48,6 +58,26 @@ export function DataTable<TData, TValue>({
     onColumnFiltersChange: setColumnFilters,
     state: { sorting, columnFilters },
   });
+
+  React.useEffect(() => {
+    setExpandedRowId(null);
+  }, [data]);
+
+  function getColumnMeta(column: ColumnDef<TData, TValue> | ReturnType<typeof table.getAllColumns>[number]["columnDef"]) {
+    return column.meta as DataTableColumnMeta | undefined;
+  }
+
+  function getCellLabel(cell: ReturnType<(typeof table)["getRowModel"]>["rows"][number]["getVisibleCells"] extends () => infer T ? T extends Array<infer Cell> ? Cell : never : never) {
+    const meta = cell.column.columnDef.meta as DataTableColumnMeta | undefined;
+    if (meta?.mobileLabel) return meta.mobileLabel;
+    if (typeof cell.column.columnDef.header === "string") return cell.column.columnDef.header;
+    return cell.column.id.replace(/_/g, " ");
+  }
+
+  function shouldToggleRow(target: EventTarget | null) {
+    if (!(target instanceof HTMLElement)) return true;
+    return !target.closest("button,a,input,select,textarea,label,[role='button']");
+  }
 
   return (
     <div className="space-y-3">
@@ -74,7 +104,13 @@ export function DataTable<TData, TValue>({
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
+                  <TableHead
+                    key={header.id}
+                    className={cn(
+                      getColumnMeta(header.column.columnDef)?.headerClassName,
+                      getColumnMeta(header.column.columnDef)?.mobileHidden && "hidden md:table-cell"
+                    )}
+                  >
                     {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                   </TableHead>
                 ))}
@@ -83,15 +119,53 @@ export function DataTable<TData, TValue>({
           </TableHeader>
           <TableBody>
             {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
+              table.getRowModel().rows.map((row) => {
+                const hiddenCells = row
+                  .getVisibleCells()
+                  .filter((cell) => (cell.column.columnDef.meta as DataTableColumnMeta | undefined)?.mobileHidden);
+                const isExpanded = expandedRowId === row.id;
+
+                return (
+                  <Fragment key={row.id}>
+                    <TableRow
+                      data-state={row.getIsSelected() && "selected"}
+                      className={cn(hiddenCells.length > 0 && "cursor-pointer md:cursor-default")}
+                      onClick={(event) => {
+                        if (!hiddenCells.length || !shouldToggleRow(event.target)) return;
+                        setExpandedRowId((current) => (current === row.id ? null : row.id));
+                      }}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell
+                          key={cell.id}
+                          className={cn(
+                            (cell.column.columnDef.meta as DataTableColumnMeta | undefined)?.cellClassName,
+                            (cell.column.columnDef.meta as DataTableColumnMeta | undefined)?.mobileHidden && "hidden md:table-cell"
+                          )}
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                    {hiddenCells.length > 0 && isExpanded && (
+                      <TableRow className="md:hidden bg-muted/20">
+                        <TableCell colSpan={columns.length} className="px-3 py-3">
+                          <dl className="space-y-3">
+                            {hiddenCells.map((cell) => (
+                              <div key={cell.id} className="space-y-1">
+                                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                  {getCellLabel(cell)}
+                                </dt>
+                                <dd>{flexRender(cell.column.columnDef.cell, cell.getContext())}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                );
+              })
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">

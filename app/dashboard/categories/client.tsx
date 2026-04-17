@@ -35,19 +35,6 @@ export function CategoriesClient({ categories }: { categories: Category[] }) {
       cell: ({ row }) => <span className="font-medium">{row.getValue("name")}</span>,
     },
     {
-      accessorKey: "created_at",
-      header: ({ column }) => (
-        <Button variant="ghost" size="sm" className="-ml-3" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-          Created <ArrowUpDown className="ml-2 h-3.5 w-3.5" />
-        </Button>
-      ),
-      cell: ({ row }) => (
-        <span className="text-muted-foreground">
-          {new Date(row.getValue("created_at")).toLocaleDateString()}
-        </span>
-      ),
-    },
-    {
       id: "actions",
       header: "Actions",
       cell: ({ row }) => {

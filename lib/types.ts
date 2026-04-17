@@ -94,6 +94,53 @@ export type Database = {
           remarks?: string | null;
         };
       };
+      notifications: {
+        Row: {
+          id: string;
+          user_id: string;
+          item_id: string | null;
+          title: string;
+          message: string;
+          created_at: string;
+          read_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          item_id?: string | null;
+          title: string;
+          message: string;
+          created_at?: string;
+          read_at?: string | null;
+        };
+        Update: {
+          item_id?: string | null;
+          title?: string;
+          message?: string;
+          read_at?: string | null;
+        };
+      };
+      item_deletion_logs: {
+        Row: {
+          id: string;
+          item_id: string;
+          item_name: string;
+          deleted_by: string | null;
+          reason: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          item_id: string;
+          item_name: string;
+          deleted_by?: string | null;
+          reason: string;
+          created_at?: string;
+        };
+        Update: {
+          reason?: string;
+        };
+      };
     };
   };
 };
@@ -102,9 +149,16 @@ export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 export type Category = Database["public"]["Tables"]["categories"]["Row"];
 export type Item = Database["public"]["Tables"]["items"]["Row"];
 export type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
+export type Notification = Database["public"]["Tables"]["notifications"]["Row"];
 
 export type ItemWithCategory = Item & { categories: Category | null; profiles: Profile | null };
 export type TransactionWithDetails = Transaction & {
   items: Item | null;
   profiles: Profile | null;
+};
+export type CategoryOption = Pick<Category, "id" | "name">;
+export type ProfileOption = Pick<Profile, "id" | "full_name">;
+export type UserListItem = Pick<Profile, "id" | "full_name" | "role">;
+export type NotificationWithItem = Notification & {
+  items: Pick<Item, "id" | "name"> | null;
 };

@@ -23,23 +23,6 @@ function StatsGridSkeleton() {
   );
 }
 
-function LowStockSkeleton() {
-  return (
-    <Card>
-      <CardHeader>
-        <div className="h-5 w-40 animate-pulse rounded bg-muted" />
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-4 w-full animate-pulse rounded bg-muted" />
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 async function DashboardStats() {
   const supabase = await createServerSupabaseClient();
 
@@ -69,7 +52,7 @@ async function DashboardStats() {
   const borrowedCount = (borrowedTx?.length ?? 0) - (returnedCount ?? 0);
 
   const lowStockItems = (allItems ?? []).filter(
-    (i: Record<string, number>) => i.quantity <= i.reorder_level
+    (i: Record<string, number>) => i.quantity > 0 && i.quantity <= i.reorder_level
   );
 
   const damagedCount = (allItems ?? []).filter(

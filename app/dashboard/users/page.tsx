@@ -19,8 +19,8 @@ export default async function UsersPage() {
 
   const { data: profiles } = await supabase
     .from("profiles")
-    .select("*")
-    .order("created_at", { ascending: false });
+    .select("id, full_name, role")
+    .order("full_name");
 
   return <UsersClient profiles={profiles ?? []} currentUserId={user!.id} />;
 }

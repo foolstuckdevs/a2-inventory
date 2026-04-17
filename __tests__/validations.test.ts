@@ -4,6 +4,7 @@ import {
   createCategorySchema,
   createTransactionSchema,
   createUserSchema,
+  deleteItemSchema,
   updateProfileSchema,
   updateUserRoleSchema,
 } from "@/lib/validations";
@@ -140,6 +141,20 @@ describe("createTransactionSchema", () => {
       });
       expect(result.success).toBe(true);
     }
+  });
+});
+
+describe("deleteItemSchema", () => {
+  it("accepts a meaningful reason", () => {
+    const result = deleteItemSchema.safeParse({
+      reason: "Duplicate record created by mistake",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects short reasons", () => {
+    const result = deleteItemSchema.safeParse({ reason: "No" });
+    expect(result.success).toBe(false);
   });
 });
 
