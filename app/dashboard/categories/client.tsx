@@ -83,7 +83,7 @@ export function CategoriesClient({ categories }: { categories: Category[] }) {
 
       {/* Create / Edit Dialog */}
       <Dialog open={formOpen} onOpenChange={(open) => { setFormOpen(open); if (!open) setEditCat(null); }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-full sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editCat ? "Edit Category" : "Add Category"}</DialogTitle>
             <DialogDescription>{editCat ? "Update the category name." : "Enter a name for the new category."}</DialogDescription>
@@ -109,7 +109,7 @@ export function CategoriesClient({ categories }: { categories: Category[] }) {
               <Label>Category Name <span className="text-destructive">*</span></Label>
               <Input name="name" required defaultValue={editCat?.name} placeholder="e.g. Office Supplies" autoFocus />
             </div>
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button type="button" variant="outline" onClick={() => { setFormOpen(false); setEditCat(null); }}>Cancel</Button>
               <Button type="submit">Save</Button>
             </div>
